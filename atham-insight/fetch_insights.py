@@ -71,6 +71,15 @@ def get_reel_insights(media_id: str) -> dict:
     return result
 
 
+def calc_rate(numerator, denominator) -> float:
+    try:
+        if denominator and denominator > 0:
+            return round(numerator / denominator * 100, 2)
+        return 0.0
+    except Exception:
+        return 0.0
+
+
 def fetch_insights() -> pd.DataFrame:
     if not ACCESS_TOKEN or not INSTAGRAM_USER_ID:
         raise ValueError(".env 파일에 ACCESS_TOKEN과 INSTAGRAM_USER_ID를 설정해주세요.")
@@ -89,6 +98,17 @@ def fetch_insights() -> pd.DataFrame:
             insights = {m: None for m in SAFE_METRICS}
 
         plays = get_plays(reel["id"])
+        reach = insights.get("reach") or 0
+        likes = insights.get("likes") or 0
+        comments = insights.get("comments") or 0
+        saved = insights.get("saved") or 0
+        shares = insights.get("shares") or 0
+
+        engagement = likes + comments + saved + shares
+        engagement_rate = calc_rate(engagement, reach)
+        share_rate = calc_rate(shares, reach)
+        view_completion_rate = calc_rate(plays, reach)
+
         caption = reel.get("caption", "")
         rows.append({
             "media_id": reel["id"],
@@ -96,11 +116,14 @@ def fetch_insights() -> pd.DataFrame:
             "caption": caption[:80] + "..." if len(caption) > 80 else caption,
             "permalink": reel.get("permalink", ""),
             "plays": plays,
-            "reach": insights.get("reach"),
-            "likes": insights.get("likes"),
-            "comments": insights.get("comments"),
-            "saved": insights.get("saved"),
-            "shares": insights.get("shares"),
+            "reach": reach,
+            "likes": likes,
+            "comments": comments,
+            "saved": saved,
+            "shares": shares,
+            "참여율": engagement_rate,
+            "공유율": share_rate,
+            "조회완료율": view_completion_rate,
         })
 
     df = pd.DataFrame(rows)
