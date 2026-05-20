@@ -66,59 +66,92 @@ with col_export:
             path = save_to_excel(df)
         st.success(f"저장 완료: {path}")
 
+# ── 기간 필터 ─────────────────────────────────────────────────────────────────
+st.markdown("---")
+st.subheader("📅 기간 필터")
+
+min_date = df["timestamp"].min().date()
+max_date = df["timestamp"].max().date()
+
+col_start, col_end = st.columns(2)
+with col_start:
+    start_date = st.date_input("시작일", value=min_date, min_value=min_date, max_value=max_date)
+with col_end:
+    end_date = st.date_input("종료일", value=max_date, min_value=min_date, max_value=max_date)
+
+filtered_df = df[
+    (df["timestamp"].dt.date >= start_date) &
+    (df["timestamp"].dt.date <= end_date)
+].copy()
+
+if filtered_df.empty:
+    st.warning("선택한 기간에 데이터가 없습니다.")
+    st.stop()
+
+st.caption(f"선택 기간 릴스: {len(filtered_df)}개")
+
 # ── KPI 요약 카드 ─────────────────────────────────────────────────────────────
 st.markdown("---")
 st.subheader("전체 합계")
 kpi_cols = st.columns(len(METRIC_COLS))
 for col, metric in zip(kpi_cols, METRIC_COLS):
-    val = safe_int(df[metric].sum()) if df[metric].notna().any() else 0
+    val = safe_int(filtered_df[metric].sum()) if filtered_df[metric].notna().any() else 0
     col.metric(METRIC_KR[metric], f"{val:,}")
 
 # ── 평균 성과율 카드 ──────────────────────────────────────────────────────────
 st.markdown("---")
 st.subheader("📈 평균 성과율")
 rate_cols = st.columns(3)
-rate_cols[0].metric("참여율", f"{df['참여율'].mean():.2f}%", help="(좋아요+댓글+저장+공유) / 도달 × 100")
-rate_cols[1].metric("공유율", f"{df['공유율'].mean():.2f}%", help="공유 / 도달 × 100")
-rate_cols[2].metric("조회완료율", f"{df['조회완료율'].mean():.2f}%", help="조회수 / 도달 × 100")
 
-# ── 상위 5개 릴스 요약 카드 ───────────────────────────────────────────────────
+if "참여율" in filtered_df.columns:
+    rate_cols[0].metric("참여율", f"{filtered_df['참여율'].mean():.2f}%", help="(좋아요+댓글+저장+공유) / 도달 × 100")
+    rate_cols[1].metric("공유율", f"{filtered_df['공유율'].mean():.2f}%", help="공유 / 도달 × 100")
+    rate_cols[2].metric("조회완료율", f"{filtered_df['조회완료율'].mean():.2f}%", help="조회수 / 도달 × 100")
+
+# ── 조회수 상위 5개 릴스 ──────────────────────────────────────────────────────
 st.markdown("---")
-st.subheader("🏆 참여율 상위 5개 릴스")
+st.subheader("🏆 조회수 상위 5개 릴스")
 
-top5 = df.nlargest(5, "참여율").reset_index(drop=True)
+plays_df = filtered_df.dropna(subset=["plays"])
+top5 = plays_df.nlargest(5, "plays").reset_index(drop=True) if not plays_df.empty else filtered_df.head(5)
+
 for _, row in top5.iterrows():
     with st.container(border=True):
-        c1, c2, c3, c4, c5, c6 = st.columns([3, 1, 1, 1, 1, 1])
+        c1, c2, c3, c4, c5, c6, c7 = st.columns([3, 1, 1, 1, 1, 1, 1])
         caption = row["caption"] if row["caption"] else "(캡션 없음)"
         ts = row["timestamp"].strftime("%Y-%m-%d") if pd.notna(row["timestamp"]) else ""
         c1.markdown(f"**{caption}**  \n`{ts}`  \n[릴스 보기]({row['permalink']})")
         c2.metric("조회수", f"{safe_int(row['plays']):,}")
         c3.metric("도달", f"{safe_int(row['reach']):,}")
-        c4.metric("참여율", f"{safe_float(row['참여율']):.2f}%")
-        c5.metric("공유율", f"{safe_float(row['공유율']):.2f}%")
-        c6.metric("조회완료율", f"{safe_float(row['조회완료율']):.2f}%")
+        c4.metric("참여율", f"{safe_float(row.get('참여율', 0)):.2f}%" if "참여율" in row else "N/A")
+        c5.metric("공유율", f"{safe_float(row.get('공유율', 0)):.2f}%" if "공유율" in row else "N/A")
+        c6.metric("조회완료율", f"{safe_float(row.get('조회완료율', 0)):.2f}%" if "조회완료율" in row else "N/A")
+        c7.metric("저장", f"{safe_int(row['saved']):,}")
 
-# ── 성과율 비교 막대 그래프 ───────────────────────────────────────────────────
+# ── 릴스별 지표 비교 막대 그래프 ─────────────────────────────────────────────
 st.markdown("---")
-st.subheader("📊 릴스별 성과율 비교")
+st.subheader("📊 릴스별 지표 비교")
 
-rate_metric = st.selectbox(
-    "성과율 선택",
-    ["참여율", "공유율", "조회완료율"],
+metric_options = METRIC_COLS + (["참여율", "공유율", "조회완료율"] if "참여율" in filtered_df.columns else [])
+metric_labels = {**METRIC_KR, "참여율": "참여율(%)", "공유율": "공유율(%)", "조회완료율": "조회완료율(%)"}
+
+selected_metric = st.selectbox(
+    "지표 선택",
+    metric_options,
+    format_func=lambda x: metric_labels.get(x, x),
 )
 
-bar_df = df.copy()
+bar_df = filtered_df.copy()
 bar_df["label"] = bar_df["timestamp"].dt.strftime("%m/%d") + " " + bar_df["caption"].str[:15]
 bar_df = bar_df.sort_values("timestamp")
 
 fig_bar = px.bar(
     bar_df,
     x="label",
-    y=rate_metric,
-    title=f"릴스별 {rate_metric}",
-    labels={"label": "릴스", rate_metric: rate_metric},
-    color=rate_metric,
+    y=selected_metric,
+    title=f"릴스별 {metric_labels.get(selected_metric, selected_metric)}",
+    labels={"label": "릴스", selected_metric: metric_labels.get(selected_metric, selected_metric)},
+    color=selected_metric,
     color_continuous_scale="Blues",
 )
 fig_bar.update_layout(xaxis_tickangle=-45, showlegend=False)
@@ -128,7 +161,7 @@ st.plotly_chart(fig_bar, use_container_width=True)
 st.markdown("---")
 st.subheader("📈 조회수 / 도달 추이")
 
-trend_df = df.sort_values("timestamp").copy()
+trend_df = filtered_df.sort_values("timestamp").copy()
 trend_df["label"] = trend_df["timestamp"].dt.strftime("%Y-%m-%d")
 
 fig_line = go.Figure()
@@ -149,7 +182,7 @@ st.plotly_chart(fig_line, use_container_width=True)
 # ── 원본 데이터 테이블 ────────────────────────────────────────────────────────
 st.markdown("---")
 with st.expander("📋 전체 데이터 보기"):
-    display = df.copy()
+    display = filtered_df.copy()
     display["timestamp"] = display["timestamp"].dt.strftime("%Y-%m-%d %H:%M")
     display.rename(columns={**{"media_id": "ID", "timestamp": "게시일시",
                                "caption": "캡션", "permalink": "링크"},
