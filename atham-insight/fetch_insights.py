@@ -6,8 +6,14 @@ from pathlib import Path
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
-ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
-INSTAGRAM_USER_ID = os.getenv("INSTAGRAM_USER_ID") or "17841435661697302"
+try:
+    import streamlit as st
+    ACCESS_TOKEN = st.secrets.get("ACCESS_TOKEN") or os.getenv("ACCESS_TOKEN")
+    INSTAGRAM_USER_ID = st.secrets.get("INSTAGRAM_USER_ID") or os.getenv("INSTAGRAM_USER_ID") or "17841435661697302"
+except Exception:
+    ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+    INSTAGRAM_USER_ID = os.getenv("INSTAGRAM_USER_ID") or "17841435661697302"
+
 API_VERSION = "v21.0"
 BASE_URL = f"https://graph.instagram.com/{API_VERSION}"
 
