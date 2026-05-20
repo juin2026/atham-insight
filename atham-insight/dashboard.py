@@ -77,7 +77,7 @@ for _, row in top5.iterrows():
         c1, c2, c3, c4, c5, c6, c7 = st.columns([3, 1, 1, 1, 1, 1, 1])
         caption = row["caption"] if row["caption"] else "(캡션 없음)"
         ts = row["timestamp"].strftime("%Y-%m-%d") if pd.notna(row["timestamp"]) else ""
-        c1.markdown(f"**{caption}**  \n`{ts}`")
+        c1.markdown(f"**{caption}**  \n`{ts}`  \n[릴스 보기]({row['permalink']})")
         c2.metric("조회수", f"{safe_int(row['plays']):,}")
         c3.metric("도달", f"{safe_int(row['reach']):,}")
         c4.metric("좋아요", f"{safe_int(row['likes']):,}")
